@@ -1,0 +1,39 @@
+<%- include('header') %>
+
+<h2>Ethereum Transaction History</h2>
+<p><strong>Wallet:</strong> <span id="walletAddress">Not connected</span></p>
+<button onclick="fetchTransactions()">Fetch Transactions</button>
+<ul id="txList"></ul>
+
+<script>
+  const apiKey = 'P65WF682FU6C5GTC4P2JEPBPC5MW3UUTGG'; // replace this!
+  let currentAccount = '';
+
+  async function fetchTransactions() {
+    if (window.ethereum) {
+      const accounts = await ethereum.request({ method: "eth_requestAccounts" });
+      currentAccount = accounts[0];
+      document.getElementById("walletAddress").innerText = currentAccount;
+
+      const url = `https://api-sepolia.etherscan.io/api?module=account&action=txlist&address=${currentAccount}&startblock=0&endblock=99999999&sort=desc&apikey=${apiKey}`;
+
+      const res = await fetch(url);
+      const data = await res.json();
+
+      const txList = document.getElementById("txList");
+      txList.innerHTML = '';
+
+      data.result.slice(0, 10).forEach(tx => {
+        const item = document.createElement("li");
+        item.innerHTML = `
+          <strong>Hash:</strong> <a href="https://sepolia.etherscan.io/tx/${tx.hash}" target="_blank">${tx.hash.slice(0, 20)}...</a> |
+          <strong>Value:</strong> ${window.web3.utils.fromWei(tx.value)} ETH |
+          <strong>Status:</strong> ${tx.isError === "0" ? "✅ Success" : "❌ Failed"}
+        `;
+        txList.appendChild(item);
+      });
+    }
+  }
+</script>
+
+<%- include('footer') %>

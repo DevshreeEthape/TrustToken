@@ -1,0 +1,341 @@
+<%- include('header') %>
+
+<div style="max-width: 800px; margin: 0 auto; padding: 20px;">
+
+  <h1 style="margin-bottom: 30px;">🎯 Tokenized Feedback & Reward System</h1>
+
+  <div style="margin-bottom: 20px;">
+    <button onclick="connect()" style="margin-bottom: 10px;">Connect MetaMask</button><br>
+    <div id="status" style="margin-bottom: 10px;">🦊 Not connected</div>
+
+    <button onclick="connectContracts()" style="margin-bottom: 10px;">Connect to Smart Contracts</button><br>
+    <div id="contractsStatus">🔗 Not connected</div>
+  </div>
+
+  <hr style="margin: 30px 0;">
+  <h2>Select Product to Review</h2>
+  <select id="productSelect" style="width: 100%; max-width: 400px; padding: 10px; margin-bottom: 15px;"></select>
+  <div id="productPreview" style="max-width: 600px; margin-top: 10px;"></div>
+
+  <hr style="margin: 30px 0;">
+  <h2>Submit Product Feedback</h2>
+  <textarea id="reviewText" placeholder="Write your feedback..." style="width: 100%; max-width: 600px; padding: 10px; margin-bottom: 10px;"></textarea><br>
+  <input type="number" id="rating" placeholder="Rating (1–5)" style="width: 200px; padding: 10px; margin-bottom: 10px;"><br>
+  <button onclick="submitFeedback()" style="margin-bottom: 15px;">Submit Feedback</button>
+  <div id="feedbackStatus" style="margin-top: 10px;"></div>
+
+  <hr style="margin: 30px 0;">
+  <h2>Check Token Balances</h2>
+  <div id="balance" style="margin-bottom: 20px;">Balance: N/A</div>
+
+  <hr style="margin: 30px 0;">
+  <h2>Redeem Tokens</h2>
+  <input type="number" id="redeemAmount" placeholder="Tokens to redeem" style="width: 200px; padding: 10px; margin-bottom: 10px;"><br>
+  <input type="text" id="redeemReason" placeholder="Redemption reason" style="width: 100%; max-width: 600px; padding: 10px; margin-bottom: 10px;"><br>
+  <button onclick="redeemTokens()" style="margin-bottom: 10px;">Redeem</button>
+  <div id="redeemStatus" style="margin-top: 10px;"></div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.2.7-rc.0/web3.min.js"></script>
+<script>
+  let account;
+  let feedbackContract;
+  let redeemContract;
+  let products = [];
+
+  const feedbackABI = [
+	{
+		"inputs": [],
+		"stateMutability": "nonpayable",
+		"type": "constructor"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "user",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "string",
+				"name": "review",
+				"type": "string"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint8",
+				"name": "rating",
+				"type": "uint8"
+			}
+		],
+		"name": "FeedbackSubmitted",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "user",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "TokensBurned",
+		"type": "event"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "user",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "TokensRewarded",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_contract",
+				"type": "address"
+			}
+		],
+		"name": "authorizeContract",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "authorizedContracts",
+		"outputs": [
+			{
+				"internalType": "bool",
+				"name": "",
+				"type": "bool"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "balances",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "user",
+				"type": "address"
+			},
+			{
+				"internalType": "uint256",
+				"name": "amount",
+				"type": "uint256"
+			}
+		],
+		"name": "burnTokens",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "getTokenBalance",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [],
+		"name": "owner",
+		"outputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "string",
+				"name": "_review",
+				"type": "string"
+			},
+			{
+				"internalType": "uint8",
+				"name": "_rating",
+				"type": "uint8"
+			}
+		],
+		"name": "submitFeedback",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	}
+];
+  const redeemABI = [
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "string",
+        "name": "reason",
+        "type": "string"
+      }
+    ],
+    "name": "redeem",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  }
+];
+
+  const feedbackAddress = "0x37C3CEE5F404a60dF2B2034810D12Cfc56BD2739";
+  const redeemAddress = "0xC27C76169A6f7959961E9687008D8ad87b7ECFfb";
+
+  async function connect() {
+    if (window.ethereum) {
+      const accounts = await ethereum.request({ method: "eth_requestAccounts" });
+      account = accounts[0];
+      document.getElementById("status").innerText = `Connected: ${account}`;
+    } else {
+      alert("Please install MetaMask");
+    }
+  }
+
+  async function connectContracts() {
+    const web3 = new Web3(window.ethereum);
+    feedbackContract = new web3.eth.Contract(feedbackABI, feedbackAddress);
+    redeemContract = new web3.eth.Contract(redeemABI, redeemAddress);
+    document.getElementById("contractsStatus").innerText = "Contracts connected";
+    getBalance();
+    feedbackContract.events.TokensRewarded({ filter: { user: account } })
+      .on("data", (event) => {
+        const amount = event.returnValues.amount;
+        document.getElementById("feedbackStatus").innerText =
+          `🎉 You received ${amount} token(s) for your feedback!`;
+        getBalance();
+      })
+      .on("error", (err) => {
+        console.error("⚠️ Event listening failed:", err);
+      });
+  }
+
+  async function getBalance() {
+    const balance = await feedbackContract.methods.getTokenBalance().call({ from: account });
+    document.getElementById("balance").innerText = `Token Balance: ${balance}`;
+  }
+
+  async function submitFeedback() {
+    const productTitle = document.getElementById("productSelect").value;
+    const review = document.getElementById("reviewText").value;
+    const rating = parseInt(document.getElementById("rating").value);
+    const fullReview = `[${productTitle}] ${review}`;
+    try {
+      await feedbackContract.methods.submitFeedback(fullReview, rating).send({ from: account });
+      getBalance();
+    } catch (err) {
+      document.getElementById("feedbackStatus").innerText = "❌ Error: " + err.message;
+    }
+  }
+
+  async function redeemTokens() {
+    const amount = document.getElementById("redeemAmount").value;
+    const reason = document.getElementById("redeemReason").value;
+    try {
+      await redeemContract.methods.redeem(amount, reason).send({ from: account });
+      document.getElementById("redeemStatus").innerText = "✅ Tokens redeemed!";
+      getBalance();
+    } catch (err) {
+      document.getElementById("redeemStatus").innerText = "❌ Error: " + err.message;
+    }
+  }
+
+  async function loadProducts() {
+    try {
+      const res = await fetch("https://fakestoreapi.com/products");
+      products = await res.json();
+      const select = document.getElementById("productSelect");
+      const preview = document.getElementById("productPreview");
+      products.forEach(product => {
+        const option = document.createElement("option");
+        option.value = product.title;
+        option.text = product.title;
+        select.appendChild(option);
+      });
+      select.onchange = () => {
+        const selected = products.find(p => p.title === select.value);
+        preview.innerHTML = `
+          <p><strong>${selected.title}</strong></p>
+          <img src="${selected.image}" alt="${selected.title}" 
+               style="max-width: 300px; max-height: 300px; width: 100%; height: auto; border-radius: 8px; object-fit: contain; box-shadow: 0 2px 6px rgba(0,0,0,0.1); margin-bottom: 10px;" />
+          <p style="max-width: 600px;">${selected.description}</p>`;
+      };
+      select.onchange();
+    } catch (err) {
+      console.error("Failed to load products:", err);
+    }
+  }
+
+  loadProducts();
+</script>
+
+<%- include('footer') %>
